@@ -1,0 +1,6 @@
+# Keep LF in the repo and in checkouts: shell scripts, Dockerfiles and nginx
+# config run inside Linux containers and break with CRLF line endings.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.ico binary
