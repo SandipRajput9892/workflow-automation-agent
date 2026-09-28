@@ -1,5 +1,7 @@
 # Workflow Automation Agent
 
+[![CI](https://github.com/SandipRajput9892/workflow-automation-agent/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SandipRajput9892/workflow-automation-agent/actions/workflows/ci.yml)
+
 An autonomous AI agent that takes a high-level natural-language task, like *"Add Priya from Acme as a lead, mark her contacted, email her a follow-up and tell #sales"*. It plans a multi-step workflow and runs it with email, calendar, CRM and Slack tools, then checks the result against the original task and runs corrective steps until the goal is actually achieved.
 
 - **Reasoning:** Anthropic Claude API (`claude-opus-5`)

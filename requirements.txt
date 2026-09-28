@@ -10,7 +10,7 @@ python-dotenv==1.2.3
 # Backend API
 fastapi==0.141.1
 uvicorn==0.54.0
-sqlalchemy==2.1.1
+sqlalchemy==2.0.54  # 2.1 requires Python 3.11+; 2.0 keeps 3.10 supported
 websockets==16.1.1
 
 # Dev / test
