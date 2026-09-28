@@ -1,0 +1,18 @@
+# Direct dependencies, pinned. Full resolved set: pip freeze > requirements.lock
+anthropic==1.8.0
+langgraph==1.2.12
+langgraph-checkpoint-sqlite==3.1.1
+chromadb==1.5.9
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-dotenv==1.2.3
+
+# Backend API
+fastapi==0.141.1
+uvicorn==0.54.0
+sqlalchemy==2.1.1
+websockets==16.1.1
+
+# Dev / test
+pytest==9.1.1
+httpx==0.28.1

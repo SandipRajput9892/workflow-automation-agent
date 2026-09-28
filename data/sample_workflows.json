@@ -1,0 +1,18 @@
+[
+  {
+    "name": "new_lead_onboarding",
+    "task": "We just met Priya Shah (priya.shah@acmecorp.com), VP Operations at Acme Corp, at a conference. Add her as a lead in the CRM, mark her as contacted, send her a friendly follow-up email, and let the team know in #sales."
+  },
+  {
+    "name": "schedule_demo",
+    "task": "Book a 'Product demo - Globex' on October 6 2026 at 2pm with tom.lee@globex.io and jordan@ourco.com, email Tom to confirm the time, and post the booking in #sales."
+  },
+  {
+    "name": "deal_won",
+    "task": "Add Maria Gomez (maria.gomez@initech.com) from Initech to the CRM, then mark the lead as won. Announce the win in #sales and send Maria a thank-you email with onboarding next steps."
+  },
+  {
+    "name": "team_kickoff",
+    "task": "Schedule a 'Q4 pipeline kickoff' for 2026-10-01 at 10:00 with alex@ourco.com, sam@ourco.com and jordan@ourco.com, and post the details in #general."
+  }
+]

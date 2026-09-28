@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR cancels the run in progress.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Backend tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Fully offline: the tests use a scripted fake LLM and hash embeddings,
+      # so no API key or network access to Claude is needed.
+      - name: Run tests
+        run: pytest -q
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  docker:
+    name: Docker images + smoke test
+    needs: [backend-tests, frontend-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Built with Buildx (layer cache kept in GitHub Actions cache) and loaded
+      # under the image names docker-compose.yml uses, so compose runs them as-is.
+      - name: Build backend image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: backend/Dockerfile
+          tags: workflow-agent-backend:latest
+          load: true
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          build-args: VITE_API_URL=/api
+          tags: workflow-agent-frontend:latest
+          load: true
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Start stack
+        run: docker compose up -d --no-build --wait --wait-timeout 180
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          echo "UI is served"
+          curl -fsS http://localhost:8080/ | grep -q 'id="root"'
+          echo "Client-side routes fall back to the SPA"
+          curl -fsS http://localhost:8080/workflows/some-id | grep -q 'id="root"'
+          echo "API through the UI's proxy"
+          curl -fsS http://localhost:8080/api/health | grep -q '"ok"'
+          curl -fsS http://localhost:8080/api/metrics | grep -q '"total_workflows"'
+          curl -fsS "http://localhost:8080/api/workflows?limit=1" | grep -q '"items"'
+          echo "API directly"
+          curl -fsS http://localhost:8000/health | grep -q '"ok"'
+          echo "WebSocket upgrade through the proxy"
+          status=$(curl -s -i -N --http1.1 --max-time 5 \
+            -H "Connection: Upgrade" -H "Upgrade: websocket" \
+            -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+            http://localhost:8080/api/ws/workflows/unknown-id | head -n 1 || true)
+          echo "$status"
+          echo "$status" | grep -q " 101 "
+          echo "All smoke checks passed"
+
+      - name: Container logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v

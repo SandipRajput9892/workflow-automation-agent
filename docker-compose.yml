@@ -1,0 +1,46 @@
+# Backend API + web UI.
+#
+#   cp .env.example .env        # set ANTHROPIC_API_KEY
+#   docker compose up --build
+#
+#   UI:  http://localhost:8080   (proxies /api to the backend)
+#   API: http://localhost:8000   (docs at /docs)
+
+services:
+  backend:
+    image: workflow-agent-backend:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Browsers reach the API through the UI's proxy (same origin); allow
+      # direct calls from the UI port and the Vite dev server too.
+      CORS_ORIGINS: '["http://localhost:8080","http://localhost:5173"]'
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-data:/app/data          # workflows DB, checkpoints, ChromaDB, mock API files
+      - backend-logs:/app/logs          # agent.log, audit_log.json, per-run traces
+      - model-cache:/home/app/.cache    # ChromaDB's embedding model (downloaded once)
+    restart: unless-stopped
+
+  frontend:
+    image: workflow-agent-frontend:latest
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+  backend-logs:
+  model-cache:
