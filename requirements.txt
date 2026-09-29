@@ -6,6 +6,7 @@ chromadb==1.5.9
 pydantic==2.13.5
 pydantic-settings==2.15.0
 python-dotenv==1.2.3
+httpx==0.28.1  # Groq API client (LLM_PROVIDER=groq)
 
 # Backend API
 fastapi==0.141.1
@@ -15,4 +16,3 @@ websockets==16.1.1
 
 # Dev / test
 pytest==9.1.1
-httpx==0.28.1

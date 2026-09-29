@@ -52,7 +52,7 @@ from langgraph.types import Command, interrupt
 from pydantic import BaseModel
 
 import src.schemas as schemas
-from src.agents.base import LLM, ClaudeLLM, LLMError
+from src.agents.base import LLM, LLMError, build_llm
 from src.agents.executor_agent import ExecutorAgent, apply_result
 from src.agents.planner_agent import PlannerAgent
 from src.agents.reflection_agent import ReflectionAgent, format_execution_history
@@ -112,7 +112,7 @@ class WorkflowOrchestrator:
         the run pauses instead (status "awaiting_approval") until resume()."""
         self.settings = settings or get_settings()
         s = self.settings
-        self.llm = llm or ClaudeLLM(s)
+        self.llm = llm or build_llm(s)
         self.registry = registry = registry or build_default_registry(s.mock_api_dir)
         self.memory = memory or WorkflowMemory(s.chroma_dir, s.chroma_collection, s.embedding_backend, s.memory_max_distance)
         self.history = history or HistoryManager(s.log_dir)
@@ -556,6 +556,10 @@ def print_result(run: WorkflowRun) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Model output can contain characters the Windows console codepage can't encode.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description="Autonomous workflow automation agent")
     parser.add_argument("task", nargs="?", help="Natural-language task to perform")
     parser.add_argument("--workflow", help="Run a named task from data/sample_workflows.json")

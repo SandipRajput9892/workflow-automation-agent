@@ -1,6 +1,6 @@
 # Backend API + web UI.
 #
-#   cp .env.example .env        # set ANTHROPIC_API_KEY
+#   cp .env.example .env        # set ANTHROPIC_API_KEY (or LLM_PROVIDER=groq + GROQ_API_KEY)
 #   docker compose up --build
 #
 #   UI:  http://localhost:8080   (proxies /api to the backend)

@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     # the API re-runs it on a fallback model within the same call.
     enable_refusal_fallback: bool = True
 
+    # --- LLM provider ---------------------------------------------------
+    # "anthropic" = Claude (settings above); "groq" = Groq's OpenAI-compatible API
+    llm_provider: Literal["anthropic", "groq"] = "anthropic"
+    groq_api_key: str | None = None
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_max_tokens: int = 8000
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+
     # --- Workflow limits ------------------------------------------------
     max_steps: int = 15
     # Retries per step (each with Claude-adjusted input) before it is marked failed.

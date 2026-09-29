@@ -165,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     import sys
 
-    from src.agents.base import ClaudeLLM
+    from src.agents.base import build_llm
     from src.config import get_settings, setup_logging
     from src.tools.tool_registry import build_default_registry
 
@@ -178,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     from src.memory.history_manager import default_store
 
     planner = PlannerAgent(
-        ClaudeLLM(settings),
+        build_llm(settings),
         build_default_registry(),
         settings.max_steps,
         settings.max_output_attempts,
