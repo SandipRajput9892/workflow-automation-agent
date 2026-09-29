@@ -58,6 +58,7 @@ class WorkflowDetail(WorkflowSummary):
     final_report: Optional[dict[str, Any]] = None
     pending_approval: Optional[dict[str, Any]] = None
     review: Optional[dict[str, Any]] = None
+    knowledge: list[dict[str, Any]] = Field(default_factory=list, description="Company knowledge passages used for this run.")
     steps: list[StepOut]
 
 
@@ -73,6 +74,30 @@ class WorkflowList(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class KnowledgeDocumentSummary(BaseModel):
+    name: str = Field(description="File name, e.g. email_guidelines.md")
+    title: str
+    size: int = Field(description="Size in bytes.")
+    updated_at: datetime
+    chunks: int = Field(description="Passages the document is split into for retrieval.")
+
+
+class KnowledgeDocument(KnowledgeDocumentSummary):
+    content: str
+
+
+class KnowledgeDocumentBody(BaseModel):
+    content: str = Field(min_length=1, description="Markdown or plain text. Start with '# Title'; use '## Section' headings.")
+
+
+class KnowledgeSearchResult(BaseModel):
+    source: str
+    title: str
+    section: str
+    text: str
+    distance: float = Field(description="Cosine distance to the query (0 = identical).")
 
 
 class Metrics(BaseModel):
@@ -118,5 +143,6 @@ def workflow_detail(row: models.WorkflowRun) -> WorkflowDetail:
         final_report=row.final_report,
         pending_approval=row.pending_approval,
         review=row.review,
+        knowledge=row.knowledge or [],
         steps=[StepOut.model_validate(s, from_attributes=True) for s in row.steps],
     )

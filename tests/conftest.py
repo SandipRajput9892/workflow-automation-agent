@@ -46,6 +46,7 @@ def settings(tmp_path) -> Settings:
         embedding_backend="hash",
         log_dir=tmp_path / "logs",
         chroma_dir=tmp_path / "chroma",
+        knowledge_dir=tmp_path / "knowledge",
         mock_api_dir=tmp_path / "mock_apis",
         checkpoint_db=tmp_path / "checkpoints.sqlite",
     )

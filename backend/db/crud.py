@@ -61,6 +61,7 @@ def sync_run(db: Session, run: core.WorkflowRun) -> WorkflowRun:
     row.success = (run.status == "completed") if run.status in TERMINAL else None
     row.pending_approval = run.pending_approval.model_dump(mode="json") if run.pending_approval else None
     row.review = run.review.model_dump(mode="json") if run.review else None
+    row.knowledge = [k.model_dump(mode="json") for k in run.knowledge]
     row.correction_rounds = run.correction_rounds
     row.needed_approval = row.needed_approval or run.status == "awaiting_approval" or any(
         g.human_approval is not None for g in run.gates

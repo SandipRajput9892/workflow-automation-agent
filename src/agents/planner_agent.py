@@ -23,8 +23,9 @@ from datetime import date
 
 from src.agents.base import LLM, ValidationFailed, generate_validated
 from src.memory.history_manager import format_past_workflows, get_similar_past_workflows
+from src.memory.knowledge_base import format_knowledge
 from src.memory.vector_store import WorkflowMemory
-from src.schemas import STEP_REF_RE, PastWorkflow, Plan, PlanDraft, PlannedStep, Step
+from src.schemas import STEP_REF_RE, KnowledgeSnippet, PastWorkflow, Plan, PlanDraft, PlannedStep, Step
 from src.tools.tool_registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,9 @@ use your best reasonable value and note the assumption in the step description.
 - Number steps 1, 2, 3, ... in execution order.
 - Similar past workflows that succeeded may be provided. Reuse their structure and wording where they fit, \
 but take every value (names, addresses, dates, IDs) from the current task, never from the examples.
+- Company knowledge (policies, SOPs, guidelines) may be provided. Follow it: email tone and sign-off, \
+which channel to post in, what a message must or must not include, how to handle existing records. The \
+task's explicit instructions win if they conflict; note which guideline you applied in the step description.
 - If work_so_far is provided, plan only what is still needed. Never repeat an action that already succeeded \
 (no re-sending emails or messages, no re-creating records); reuse IDs from its results instead, and follow \
 any supervisor guidance given there."""
@@ -76,12 +80,19 @@ class PlannerAgent:
         self.memory = memory
         self.memory_top_k = memory_top_k
 
-    def plan(self, task: str, today: str | None = None, context: str = "") -> Plan:
+    def plan(
+        self,
+        task: str,
+        today: str | None = None,
+        context: str = "",
+        knowledge: list[KnowledgeSnippet] | None = None,
+    ) -> Plan:
         """Return a validated Plan for `task`, or raise PlanningError.
 
         Similar past successful workflows are retrieved from memory and shown to
-        Claude as examples. `context` carries what has happened so far when the
-        supervisor asks for a new plan mid-run (execution history, guidance)."""
+        Claude as examples. `knowledge`: company policies/SOPs retrieved for the
+        task. `context` carries what has happened so far when the supervisor
+        asks for a new plan mid-run (execution history, guidance)."""
         parts = [
             f"Today's date: {today or date.today().isoformat()}",
             f"Available tools (Claude tool-use schemas):\n{self.registry.describe()}",
@@ -89,6 +100,8 @@ class PlannerAgent:
         past = self.similar_workflows(task)
         if past:
             parts.append(f"<similar_past_workflows>\n{format_past_workflows(past)}\n</similar_past_workflows>")
+        if knowledge:
+            parts.append(f"<company_knowledge>\n{format_knowledge(knowledge)}\n</company_knowledge>")
         if context:
             parts.append(f"<work_so_far>\n{context}\n</work_so_far>")
         parts.append(f"<task>\n{task}\n</task>")

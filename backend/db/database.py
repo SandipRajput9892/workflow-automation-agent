@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import Request
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -31,6 +31,20 @@ class Database:
         from backend.db import models  # noqa: F401  (registers the tables)
 
         Base.metadata.create_all(self.engine)
+        self._add_missing_columns()
+
+    def _add_missing_columns(self) -> None:
+        """create_all() never alters existing tables: add nullable columns that
+        newer versions of the models introduced, so an old database keeps working."""
+        inspector = inspect(self.engine)
+        with self.engine.begin() as conn:
+            for table in Base.metadata.sorted_tables:
+                existing = {c["name"] for c in inspector.get_columns(table.name)}
+                for column in table.columns:
+                    if column.name not in existing and column.nullable:
+                        conn.execute(text(
+                            f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {column.type.compile(self.engine.dialect)}'
+                        ))
 
     @contextmanager
     def session(self) -> Iterator[Session]:

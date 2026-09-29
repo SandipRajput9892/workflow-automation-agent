@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Activity, History, LayoutDashboard, SendHorizontal, Workflow } from "lucide-react";
+import { Activity, BookOpen, History, LayoutDashboard, SendHorizontal, Workflow } from "lucide-react";
 import { API_URL, getHealth } from "../api/client";
 import { RECENT_EVENT, lastWorkflowId } from "../lib/recent";
 
@@ -44,6 +44,7 @@ export default function Sidebar() {
     { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
     { to: "/submit", label: "New task", icon: SendHorizontal },
     { to: "/workflows", label: "History", icon: History, end: true },
+    { to: "/knowledge", label: "Knowledge", icon: BookOpen },
   ];
 
   return (

@@ -228,12 +228,12 @@ def test_progress_events_stream(orch, fake_llm):
 
     kinds = [e.kind for e in events]
     assert kinds == [
-        "run_started", "intake", "plan_created", "gate",
+        "run_started", "intake", "knowledge", "plan_created", "gate",
         "step_started", "step_finished", "step_started", "step_finished",
         "reflection", "run_completed",
     ]
-    assert events[5].data["status"] == "ok" and events[5].data["result"]["data"]["lead_id"] == "LEAD-0001"
-    assert events[5].data["tool_input"] == LEAD and events[5].data["attempts"] == 1
+    assert events[6].data["status"] == "ok" and events[6].data["result"]["data"]["lead_id"] == "LEAD-0001"
+    assert events[6].data["tool_input"] == LEAD and events[6].data["attempts"] == 1
     assert events[-1].run.status == "completed"
     assert {e.run_id for e in events} == {events[0].run_id}
 

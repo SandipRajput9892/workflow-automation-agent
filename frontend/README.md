@@ -37,7 +37,8 @@ With Docker (from the project root): `docker compose up --build`, then open http
 | `/` | **Dashboard** | Metric cards (auto-completed %, needed approval %, avg steps, avg completion time) and a bar chart of workflows by outcome: auto-completed, needed approval, failed. The chart has a table view. Data from `GET /metrics`, refreshed every 30s. |
 | `/submit` | **New task** | Textarea (Ctrl+Enter submits) plus example tasks. Posts to `POST /workflows?wait=false`, shows the new `workflow_id`, then redirects to the live view. |
 | `/workflows` | **History** | Table of workflows (task, status, steps, duration, start time) from `GET /workflows`. Has a status filter and pagination, both kept in the URL. |
-| `/workflows/:id` | **Live workflow** | Connects to `WS /ws/workflows/{id}` and renders a `StepTimeline`: pending / running / success / failed / skipped, each with its own icon and label, grouped by plan round. Expand a step to see its exact tool input and result. There's also an activity feed and the final report. When the run pauses for approval, the `ApprovalModal` opens. |
+| `/workflows/:id` | **Live workflow** | Connects to `WS /ws/workflows/{id}` and renders a `StepTimeline`: pending / running / success / failed / skipped, each with its own icon and label, grouped by plan round. Expand a step to see its exact tool input and result. There's also an activity feed, the company knowledge (policies/SOPs) retrieved for the run, and the final report. When the run pauses for approval, the `ApprovalModal` opens. |
+| `/knowledge` | **Knowledge** | Company policies, SOPs and guidelines the agent follows. List, view, edit, create and delete documents, upload `.md`/`.txt` files, and test which passages a task would retrieve (`/knowledge` API). |
 
 The sidebar's **Live workflow** link goes to the most recently opened workflow.
 

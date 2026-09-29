@@ -137,6 +137,7 @@ class WorkflowRun(BaseModel):
     pending_approval: Optional["ApprovalRequest"] = None  # set while status == "awaiting_approval"
     error: Optional[str] = None  # set when status == "interrupted"
     final_report: Optional[FinalReport] = None
+    knowledge: list["KnowledgeSnippet"] = Field(default_factory=list)  # company knowledge retrieved at intake
     started_at: datetime = Field(default_factory=utcnow)
     finished_at: Optional[datetime] = None
 
@@ -164,6 +165,16 @@ class PastWorkflow(BaseModel):
     outcome: str
     success: bool
     status: str
+    distance: float  # cosine distance to the query (0 = identical)
+
+
+class KnowledgeSnippet(BaseModel):
+    """A passage of company knowledge (policy, SOP, guideline) retrieved for a task."""
+
+    source: str  # file name in the knowledge folder, e.g. email_guidelines.md
+    title: str  # the document's title
+    section: str = ""  # heading of the section the passage comes from
+    text: str
     distance: float  # cosine distance to the query (0 = identical)
 
 
@@ -356,6 +367,7 @@ class WorkflowState(TypedDict, total=False):
     routes: list[RouteRecord]
     pending_approval: Optional[ApprovalRequest]  # set while waiting for a human
     plan_requests: int  # times the planner has been invoked
+    knowledge: list[KnowledgeSnippet]  # company knowledge retrieved at intake
     final_report: FinalReport
 
 

@@ -28,7 +28,21 @@ export const approveWorkflow = (id, { approved, comment = "", approver = "web" }
 
 export const getMetrics = () => api.get("/metrics").then((r) => r.data);
 
-export const getHealth = () => api.get("/health", { timeout: 5000 }).then((r) => r.data);
+// Company knowledge (policies, SOPs, guidelines) the agent retrieves for every task.
+const docPath = (name) => `/knowledge/${encodeURIComponent(name)}`;
+
+export const listKnowledge = () => api.get("/knowledge").then((r) => r.data);
+
+export const getKnowledgeDoc = (name) => api.get(docPath(name)).then((r) => r.data);
+
+export const saveKnowledgeDoc = (name, content) => api.put(docPath(name), { content }).then((r) => r.data);
+
+export const deleteKnowledgeDoc = (name) => api.delete(docPath(name));
+
+export const searchKnowledge = (q, topK = 6) =>
+  api.get("/knowledge/search", { params: { q, top_k: topK } }).then((r) => r.data);
+
+export const getHealth =() => api.get("/health", { timeout: 5000 }).then((r) => r.data);
 
 /** Human-readable message from an axios error (FastAPI puts it in `detail`). */
 export function errorMessage(err) {

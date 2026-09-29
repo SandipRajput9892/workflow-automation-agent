@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, CircleAlert, ShieldAlert, Wifi, WifiOff } from "lucide-react";
+import { ArrowLeft, BookOpen, CircleAlert, ShieldAlert, Wifi, WifiOff } from "lucide-react";
 import { useWorkflowSocket } from "../hooks/useWorkflowSocket";
 import { getWorkflow } from "../api/client";
 import StepTimeline from "../components/StepTimeline";
@@ -26,6 +26,36 @@ function Card({ title, children, className = "" }) {
       {title && <h2 className="mb-4 text-sm font-semibold">{title}</h2>}
       {children}
     </section>
+  );
+}
+
+/** Policy/SOP passages retrieved for this run, grouped by document. */
+function KnowledgeUsed({ snippets }) {
+  const docs = [];
+  for (const s of snippets) {
+    const doc = docs.find((d) => d.source === s.source) || docs[docs.push({ source: s.source, title: s.title, parts: [] }) - 1];
+    doc.parts.push(s);
+  }
+  return (
+    <ul className="space-y-3 text-sm">
+      {docs.map((d) => (
+        <li key={d.source}>
+          <Link to={`/knowledge?doc=${encodeURIComponent(d.source)}`} className="inline-flex items-center gap-1.5 font-medium text-blue-700 hover:underline dark:text-blue-300">
+            <BookOpen className="size-3.5 shrink-0" aria-hidden="true" /> {d.title}
+          </Link>
+          <ul className="mt-1 space-y-1 pl-5">
+            {d.parts.map((p, i) => (
+              <li key={i}>
+                <details className="group text-xs">
+                  <summary className="cursor-pointer text-stone-600 marker:text-stone-400 dark:text-stone-400">{p.section || "Passage"}</summary>
+                  <p className="mt-1 whitespace-pre-wrap text-stone-600 dark:text-stone-400">{p.text}</p>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -71,6 +101,10 @@ export default function WorkflowDetail() {
   const allSteps = plans.flatMap((p) => p.steps);
   const done = allSteps.filter((s) => ["completed", "failed", "skipped"].includes(s.status)).length;
   const log = events.filter((e) => e.kind !== "snapshot");
+  // Stored on the workflow once the run finishes or pauses; live from the event before that.
+  const knowledge = workflow?.knowledge?.length
+    ? workflow.knowledge
+    : (log.findLast((e) => e.kind === "knowledge")?.data?.snippets ?? []);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -139,20 +173,27 @@ export default function WorkflowDetail() {
           )}
         </div>
 
-        <Card title="Activity" className="h-fit lg:sticky lg:top-6">
-          {log.length === 0 ? (
-            <p className="text-sm text-stone-500">No live events{status && ["completed", "failed", "rejected"].includes(status) ? " (run finished before this session)" : " yet"}.</p>
-          ) : (
-            <ol className="max-h-[32rem] space-y-2 overflow-y-auto text-xs" aria-live="polite">
-              {log.map((e, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="shrink-0 tabular-nums text-stone-400">{formatTime(e.ts)}</span>
-                  <span className="text-stone-700 dark:text-stone-300">{e.message}</span>
-                </li>
-              ))}
-            </ol>
+        <div className="h-fit space-y-6 lg:sticky lg:top-6">
+          {knowledge.length > 0 && (
+            <Card title="Company knowledge used">
+              <KnowledgeUsed snippets={knowledge} />
+            </Card>
           )}
-        </Card>
+          <Card title="Activity">
+            {log.length === 0 ? (
+              <p className="text-sm text-stone-500">No live events{status && ["completed", "failed", "rejected"].includes(status) ? " (run finished before this session)" : " yet"}.</p>
+            ) : (
+              <ol className="max-h-[32rem] space-y-2 overflow-y-auto text-xs" aria-live="polite">
+                {log.map((e, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="shrink-0 tabular-nums text-stone-400">{formatTime(e.ts)}</span>
+                    <span className="text-stone-700 dark:text-stone-300">{e.message}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Card>
+        </div>
       </div>
 
       {pendingApproval && !dismissed && (

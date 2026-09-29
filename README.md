@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/SandipRajput9892/workflow-automation-agent/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SandipRajput9892/workflow-automation-agent/actions/workflows/ci.yml)
 
-An autonomous AI agent that takes a high-level natural-language task, like *"Add Priya from Acme as a lead, mark her contacted, email her a follow-up and tell #sales"*. It plans a multi-step workflow and runs it with email, calendar, CRM and Slack tools, then checks the result against the original task and runs corrective steps until the goal is actually achieved.
+An autonomous AI agent that takes a high-level natural-language task, like *"Add Priya from Acme as a lead, mark her contacted, email her a follow-up and tell #sales"*. It plans a multi-step workflow and runs it with email, calendar, CRM and Slack tools, then checks the result against the original task and runs corrective steps until the goal is actually achieved. Company policies, SOPs and guidelines are retrieved for every task (RAG) and steer both planning and the safety review.
 
 - **Reasoning:** Anthropic Claude API (`claude-opus-5`, default) or Groq (`openai/gpt-oss-120b`); see [Choosing the LLM provider](#choosing-the-llm-provider)
 - **Orchestration:** LangGraph
-- **Long-term memory:** ChromaDB
+- **Long-term memory and company knowledge (RAG):** ChromaDB
 - **Backend / UI:** FastAPI + SQLite, React + Vite + Tailwind, live updates over WebSocket
 
 ## Quick start
@@ -28,12 +28,13 @@ The agents below are described in terms of Claude. With `LLM_PROVIDER=groq` ever
 ## Architecture
 
 ```
-                         ┌──────────────┐
-                ┌───────▶│   planner    │◀── similar past runs (ChromaDB)
-                │        └──────┬───────┘
- task ──▶  ┌────┴─────┐◀────────┘
-           │supervisor│   safety gate ──▶ ┌──────────────┐
-           │  (hub)   │──────────────────▶│   executor   │──▶ tools (email, calendar, CRM, Slack)
+                         ┌──────────────┐◀── similar past runs (ChromaDB)
+                ┌───────▶│   planner    │◀─┐
+                │        └──────┬───────┘  ├── company knowledge (RAG): policies, SOPs, guidelines
+ task ──▶  ┌────┴─────┐◀────────┘          │   from data/knowledge/, retrieved once at intake
+           │supervisor│   safety gate ◀────┘
+           │  (hub)   │        │          ┌──────────────┐
+           │          │────────┴─────────▶│   executor   │──▶ tools (email, calendar, CRM, Slack)
            │          │◀──────────────────└──────────────┘
            │          │   ┌──────────────┐
            │          │──▶│  reflection  │
@@ -54,7 +55,7 @@ Every agent reports back to the supervisor, which decides what happens next:
 | Agent | Role | Claude call |
 |---|---|---|
 | **Supervisor** | Intake (approve or reject the task, rate its risk), routing between agents, the pre-execution safety gate, and the final report | structured output |
-| **Planner** | Breaks the task into tool-grounded steps, using similar past runs from memory | structured output |
+| **Planner** | Breaks the task into tool-grounded steps, following the company knowledge retrieved for the task and reusing similar past runs from memory | structured output |
 | **Executor** | Calls each step's tool directly with the planned input, filling in `<field from step N>` placeholders from earlier results. If a call fails, Claude adjusts the input and the step is retried once | structured output (only on failure) |
 | **Reflection** | After a plan has run, reviews the original task against the full execution history. Checks whether the goal was actually achieved (not just that nothing errored), and returns `workflow_complete` or a corrective mini-plan of new steps | structured output |
 
@@ -66,7 +67,8 @@ Hard limits (`EXECUTOR_MAX_RETRIES`, `MAX_CORRECTION_ROUNDS`, `MAX_PLAN_REQUESTS
 src/
   agents/        supervisor, planner, executor, reflection + base.py (LLM interface: ClaudeLLM, GroqLLM, build_llm)
   tools/         email, calendar, crm, slack tools + tool_registry.py (names, descriptions, input schemas)
-  memory/        vector_store.py (ChromaDB workflow memory), history_manager.py (save/find past workflows, run logs, audit log)
+  memory/        vector_store.py (ChromaDB workflow memory), knowledge_base.py (company knowledge RAG),
+                 history_manager.py (save/find past workflows, run logs, audit log)
   orchestrator.py  LangGraph graph + CLI
   config.py      settings from env/.env
   schemas.py     Pydantic models and graph state
@@ -74,7 +76,7 @@ src/
 frontend/         React + Vite + Tailwind web UI (see frontend/README.md)
 backend/
   main.py        FastAPI app (CORS, lifespan wiring)
-  routes/        workflow_routes.py, metrics_routes.py
+  routes/        workflow_routes.py, metrics_routes.py, knowledge_routes.py
   db/            database.py (SQLAlchemy engine/sessions), models.py (WorkflowRun, StepLog), crud.py
   services/      workflow_service.py (runs workflows in worker threads, mirrors progress to DB + WebSocket)
   websocket/     live_updates.py (/ws/workflows/{id} + event broker)
@@ -82,6 +84,7 @@ backend/
 data/
   sample_workflows.json
   mock_apis/     JSON files the mock tools write to (emails, calendar, crm, slack)
+  knowledge/     company policies, SOPs and guidelines (Markdown) used for RAG
 tests/           offline tests (scripted fake LLM, no API calls)
 logs/            agent.log, audit_log.json (every executor action), runs/<run_id>.jsonl
 run_backend.ps1 / run_backend.sh   start the API with auto-reload
@@ -147,7 +150,7 @@ How it's set up:
 - **Startup order.** The UI waits until the backend's health check passes.
 - **Settings.** The backend reads its settings from `.env`, the same variables as a local run.
 - **Persistent data.** It lives in named volumes and survives `docker compose down`:
-  - `backend-data`: workflow database, run checkpoints, ChromaDB memory, mock API files.
+  - `backend-data`: workflow database, run checkpoints, ChromaDB memory and knowledge index, company knowledge documents, mock API files.
   - `backend-logs`: `agent.log`, `audit_log.json`, per-run traces.
   - `model-cache`: ChromaDB's embedding model, downloaded on first use.
 - **Reset everything:** `docker compose down -v`.
@@ -200,6 +203,17 @@ The planner checks every plan before returning it: each `tool_input` must be val
 
 Each run prints a final report. The full trace of every plan, tool call and reflection is written to `logs/runs/<run_id>.jsonl`. Every action the executor takes (tool calls, input adjustments, skipped steps) is also appended to `logs/audit_log.json` with a timestamp, step, tool, input and result. Every finished run is saved with `save_workflow_run(task, plan, result)`. It is embedded in ChromaDB (`data/chroma/`) as the task, the final plan (the steps that actually ran, with real IDs and any retry fixes) and the outcome. Before planning, the planner calls `get_similar_past_workflows(task, top_k=3)`. Similar *successful* workflows within `MEMORY_MAX_DISTANCE` are shown to Claude as examples to reuse, with every value taken from the new task.
 
+## Company knowledge (RAG)
+
+The agent follows your company's rules, not just the task text. Policies, SOPs and guidelines live as Markdown or text files in `data/knowledge/`. Five samples ship with the project: lead management, customer email guidelines, the sales follow-up SOP, meeting scheduling and Slack guidelines.
+
+1. **Indexing.** Each file is split into passages, one per `##` section (long sections are split by paragraph), and embedded into a ChromaDB collection (`KNOWLEDGE_COLLECTION`) next to the workflow memory. The index follows the folder: changed files are re-indexed and deleted files dropped on the next lookup, so editing a file on disk is enough.
+2. **Retrieval.** When the supervisor accepts a task, the `KNOWLEDGE_TOP_K` passages most relevant to it are retrieved once and kept on the run (a `knowledge` progress event, and `knowledge` on the workflow in the API).
+3. **Planning.** The planner gets them in a `<company_knowledge>` block and follows them (tone and sign-off, which channel, what not to post, how to treat existing records). Explicit instructions in the task win.
+4. **Guardrail.** The safety gate sees the same passages and sends a plan back for revision when it clearly breaks one.
+
+Manage documents on the **Knowledge** page of the web UI (create, edit, upload `.md`/`.txt`, delete, and test which passages a task would retrieve) or through the `/knowledge` API. Write one topic per `##` section so each passage stands on its own.
+
 ## Web UI
 
 ```powershell
@@ -214,7 +228,8 @@ Submit tasks, watch them run step by step, approve high-risk plans, browse histo
 | Dashboard | `/` | Metric cards and a chart of workflows by outcome |
 | New task | `/submit` | Task input and examples; starts a run and opens the live view |
 | History | `/workflows` | Past runs with status filter and pagination |
-| Live workflow | `/workflows/:id` | Step timeline over WebSocket, activity feed, approval dialog, final report |
+| Live workflow | `/workflows/:id` | Step timeline over WebSocket, activity feed, company knowledge used, approval dialog, final report |
+| Knowledge | `/knowledge` | Company policies and SOPs: view, edit, create, upload, delete; test retrieval for a task |
 
 The backend uses the same `.env` as the CLI, so the UI runs on whichever provider `LLM_PROVIDER` selects. Runs started from the UI are stored in `data/backend.sqlite`; CLI runs aren't listed there.
 
@@ -233,8 +248,11 @@ Interactive docs: http://localhost:8000/docs
 | `GET /workflows/{id}` | Full status: every step (plan round, tool, input, result, attempts, timings), the final report, and the plan waiting for approval, if any. |
 | `GET /workflows?status=&from=&to=&limit=&offset=` | Past workflows, newest first. `from` / `to` are dates (inclusive, UTC). |
 | `POST /workflows/{id}/approve` `{"approved": true, "comment": "", "approver": "alice"}` | Answer a paused workflow's approval request and resume it from its checkpoint. Declining with a comment asks for a revised plan; declining without one cancels. Supports `?wait=false`. |
+| `GET /knowledge` | Company knowledge documents (name, title, size, passages, last update). |
+| `GET /knowledge/{name}` / `PUT /knowledge/{name}` `{"content": "..."}` / `DELETE /knowledge/{name}` | Read, create or replace, and delete a document, e.g. `email_guidelines.md`. Writes are re-indexed immediately. |
+| `GET /knowledge/search?q=&top_k=` | The passages a workflow for `q` would retrieve, nearest first. |
 | `GET /metrics` | % auto-completed (finished runs that completed with no human approval), % needing approval, average executed steps per finished workflow, average completion time (wall clock, including approval wait). |
-| `WS /ws/workflows/{id}` | Sends a `snapshot` of the workflow, then every progress event as JSON (`intake`, `plan_created`, `gate`, `awaiting_approval`, `step_started`, `step_finished`, `reflection`, `run_completed`, ...). Events emitted before you connected are replayed first. The socket closes after a finished run's final event and stays open while a run is paused. Unknown ids are closed with code 4404. |
+| `WS /ws/workflows/{id}` | Sends a `snapshot` of the workflow, then every progress event as JSON (`intake`, `knowledge`, `plan_created`, `gate`, `awaiting_approval`, `step_started`, `step_finished`, `reflection`, `run_completed`, ...). Events emitted before you connected are replayed first. The socket closes after a finished run's final event and stays open while a run is paused. Unknown ids are closed with code 4404. |
 
 How it fits together:
 
@@ -249,7 +267,7 @@ How it fits together:
 |---|---|---|
 | `send_email` | `to`, `subject`, `body` | `emails.json` |
 | `create_event` | `title`, `attendees`, `datetime` | `calendar.json` |
-| `create_lead` | `name`, `email`, `company` | `crm.json` |
+| `create_lead` | `name`, `email`, `company` | `crm.json` (an existing email returns that lead, `created: false`) |
 | `update_status` | `lead_id`, `status` | `crm.json` |
 | `send_message` | `channel`, `text` | `slack.json` |
 
@@ -261,7 +279,7 @@ Every tool returns a `ToolResult` (`success`, `tool`, `data`, `error`) and never
 pytest -q
 ```
 
-The 92 tests (105 cases once parametrized) use a scripted fake LLM and offline hash embeddings, so they need no API key or network access. They cover the tools, planner, executor, reflection, supervisor, memory, orchestrator and backend API. CI (`.github/workflows/ci.yml`) runs them on Python 3.10 and 3.12, builds the frontend, and smoke-tests the Docker stack.
+The 107 tests (124 cases once parametrized) use a scripted fake LLM and offline hash embeddings, so they need no API key or network access. They cover the tools, planner, executor, reflection, supervisor, memory, company knowledge, orchestrator and backend API. CI (`.github/workflows/ci.yml`) runs them on Python 3.10 and 3.12, builds the frontend, and smoke-tests the Docker stack.
 
 ## Configuration
 
@@ -283,6 +301,9 @@ All settings come from environment variables or `.env` (see `src/config.py` and 
 | `BULK_RECIPIENT_THRESHOLD`, `BULK_MESSAGE_THRESHOLD` | `5`, `10` | When recipients / messages count as bulk (high risk) |
 | `EMBEDDING_BACKEND` | `default` | `default` (ONNX MiniLM, ~80 MB download) or `hash` (offline) |
 | `MEMORY_TOP_K`, `MEMORY_MAX_DISTANCE` | `3`, `0.6` | How many similar past runs the planner sees, and how similar they must be |
+| `KNOWLEDGE_DIR` | `data/knowledge` | Folder of company policies/SOPs (`*.md`, `*.txt`) |
+| `KNOWLEDGE_TOP_K`, `KNOWLEDGE_MAX_DISTANCE` | `6`, `0.8` | Passages retrieved per task (`0` disables), and how similar they must be |
+| `KNOWLEDGE_COLLECTION` | `company_knowledge` | ChromaDB collection for the knowledge index |
 | `LOG_LEVEL` | `INFO` | Logging level |
 | `BACKEND_DATABASE_URL` | `sqlite:///data/backend.sqlite` | Backend database |
 | `BACKEND_MAX_CONCURRENT_RUNS` | `4` | Workflows run at once by the API |

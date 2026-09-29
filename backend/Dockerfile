@@ -17,10 +17,11 @@ RUN useradd --create-home --uid 10001 app
 
 COPY src/ src/
 COPY backend/ backend/
-# Seed data (sample workflows + empty mock API files). /app/data is a volume at
+# Seed data (sample workflows, empty mock API files, sample company knowledge). /app/data is a volume at
 # runtime; Docker copies these into it the first time the volume is created.
 COPY data/sample_workflows.json data/
 COPY data/mock_apis/ data/mock_apis/
+COPY data/knowledge/ data/knowledge/
 RUN mkdir -p logs /home/app/.cache && chown -R app:app /app /home/app/.cache
 
 USER app

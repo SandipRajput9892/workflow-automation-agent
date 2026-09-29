@@ -37,6 +37,7 @@ class WorkflowRun(Base):
     final_report: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     pending_approval: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)  # plan + gate review while paused
     review: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)  # reflection agent's last verdict
+    knowledge: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON)  # company knowledge retrieved at intake
 
     steps: Mapped[list["StepLog"]] = relationship(
         back_populates="workflow",

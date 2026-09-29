@@ -8,6 +8,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const SubmitTask = lazy(() => import("./pages/SubmitTask"));
 const WorkflowDetail = lazy(() => import("./pages/WorkflowDetail"));
 const WorkflowHistory = lazy(() => import("./pages/WorkflowHistory"));
+const Knowledge = lazy(() => import("./pages/Knowledge"));
 
 function NotFound() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="/submit" element={<SubmitTask />} />
             <Route path="/workflows" element={<WorkflowHistory />} />
             <Route path="/workflows/:id" element={<WorkflowDetail />} />
+            <Route path="/knowledge" element={<Knowledge />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

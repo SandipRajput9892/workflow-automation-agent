@@ -30,12 +30,14 @@ from typing import Protocol
 from src.agents.base import LLM, ValidationFailed, generate_validated
 from src.agents.reflection_agent import format_execution_history
 from src.config import Settings
+from src.memory.knowledge_base import format_knowledge
 from src.schemas import (
     RISK_ORDER,
     AgentName,
     ApprovalDecision,
     FinalReport,
     GateResult,
+    KnowledgeSnippet,
     Plan,
     PlanAssessment,
     PolicyFinding,
@@ -75,7 +77,11 @@ turns out the task itself is harmful).
 
 Rate risk by real-world impact: internal notifications are low; messages to external people and CRM \
 changes are medium; bulk messaging, many recipients, or hard-to-undo changes are high. Automated policy \
-findings are included; take them into account but do not just restate them."""
+findings are included; take them into account but do not just restate them.
+
+Company knowledge (policies, SOPs, guidelines) may be included. If the plan clearly breaks one of them and \
+the task did not explicitly ask for that, choose revise and cite the guideline in feedback. Do not revise \
+over stylistic details the guidelines leave open."""
 
 ROUTE_SYSTEM = """You are the supervisor of an autonomous workflow-automation system. You coordinate a \
 planner (writes a plan of tool calls), an executor (runs a plan), and a reflection agent (checks the \
@@ -323,6 +329,7 @@ class SupervisorAgent:
         executed: list[Plan],
         intake_risk: RiskLevel = "low",
         today: str = "",
+        knowledge: list[KnowledgeSnippet] | None = None,
     ) -> GateResult:
         """Policy checks, then Claude's review. Human approval is a separate
         step: check needs_human() on the result, then apply_approval()."""
@@ -348,6 +355,8 @@ class SupervisorAgent:
         ]
         if executed:
             parts.append(f"<already_executed>\n{format_execution_history(executed)}\n</already_executed>")
+        if knowledge:
+            parts.append(f"<company_knowledge>\n{format_knowledge(knowledge)}\n</company_knowledge>")
         if findings:
             parts.append("Automated policy findings:\n" + "\n".join(f"- [{f.severity}] {f.message}" for f in findings))
         assessment = self.llm.structured(GATE_SYSTEM, "\n\n".join(p for p in parts if p), PlanAssessment)

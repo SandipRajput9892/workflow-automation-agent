@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.db import crud
 from backend.db.database import Database
-from backend.routes import metrics_routes, workflow_routes
+from backend.routes import knowledge_routes, metrics_routes, workflow_routes
 from backend.services.workflow_service import WorkflowService
 from backend.websocket import live_updates
 from backend.websocket.live_updates import EventBroker
@@ -55,6 +55,7 @@ def create_app(settings: Settings | None = None, orchestrator_factory: Orchestra
         broker.bind_loop(asyncio.get_running_loop())
         service = WorkflowService(factory(settings), db, broker, settings.backend_max_concurrent_runs)
         app.state.db, app.state.broker, app.state.service = db, broker, service
+        app.state.knowledge = service.orchestrator.knowledge
         try:
             yield
         finally:
@@ -63,7 +64,7 @@ def create_app(settings: Settings | None = None, orchestrator_factory: Orchestra
 
     app = FastAPI(
         title="Workflow Automation Agent",
-        description="Run natural-language workflows across email, calendar, CRM and Slack.",
+        description="Run natural-language workflows across email, calendar, CRM and Slack, guided by company knowledge.",
         version="1.0.0",
         lifespan=lifespan,
     )
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None, orchestrator_factory: Orchestra
     )
     app.include_router(workflow_routes.router)
     app.include_router(metrics_routes.router)
+    app.include_router(knowledge_routes.router)
     app.include_router(live_updates.router)
 
     @app.get("/health", tags=["health"])

@@ -189,7 +189,7 @@ def test_websocket_streams_live_updates(client, fake_llm):
     kinds = [m["kind"] for m in messages]
     assert kinds[0] == "snapshot"
     # replayed + live events cover the whole run, in order, without duplicates
-    assert kinds[1:] == ["run_started", "intake", "plan_created", "gate",
+    assert kinds[1:] == ["run_started", "intake", "knowledge", "plan_created", "gate",
                          "step_started", "step_finished", "step_started", "step_finished",
                          "step_started", "step_finished", "reflection", "run_completed"]
     finished = [m for m in messages if m["kind"] == "step_finished"]

@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     # are considered unrelated and not shown to the planner.
     memory_max_distance: float = 0.6
 
+    # --- Company knowledge (RAG) ----------------------------------------
+    # Policies, SOPs and guidelines (*.md / *.txt) retrieved for every task and
+    # shown to the planner and the safety gate. Indexed into ChromaDB (chroma_dir).
+    knowledge_dir: Path = PROJECT_ROOT / "data" / "knowledge"
+    knowledge_collection: str = "company_knowledge"
+    knowledge_top_k: int = 6  # passages per task; 0 disables retrieval
+    # Passages farther than this cosine distance are considered unrelated.
+    knowledge_max_distance: float = 0.8
+
     # --- Paths ----------------------------------------------------------
     mock_api_dir: Path = PROJECT_ROOT / "data" / "mock_apis"
     sample_workflows_path: Path = PROJECT_ROOT / "data" / "sample_workflows.json"

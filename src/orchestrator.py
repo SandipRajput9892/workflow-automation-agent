@@ -9,6 +9,8 @@
 
 - supervisor: intake, then picks the next agent (SupervisorAgent.allowed_moves
   + route). Choosing the executor sends the pending plan through the gate.
+  Intake also retrieves company knowledge (policies, SOPs) for the task, which
+  the planner and the gate see on every round.
 - gate: policy checks + Claude's review of the pending plan.
 - approval: human sign-off when approval_mode requires it. With an approver
   (e.g. the console prompt) it asks inline; without one the run PAUSES here and
@@ -59,6 +61,7 @@ from src.agents.reflection_agent import ReflectionAgent, format_execution_histor
 from src.agents.supervisor_agent import Approver, AutoApprover, ConsoleApprover, SupervisorAgent
 from src.config import Settings, get_settings, setup_logging
 from src.memory.history_manager import AuditLog, HistoryManager, final_plan, save_workflow_run
+from src.memory.knowledge_base import KnowledgeBase
 from src.memory.vector_store import WorkflowMemory
 from src.schemas import (
     ApprovalDecision,
@@ -107,14 +110,19 @@ class WorkflowOrchestrator:
         approver: Approver | None = None,
         checkpointer: BaseCheckpointSaver | None = None,
         today: str | None = None,
+        knowledge: KnowledgeBase | None = None,
     ):
         """`approver`: asked inline when a plan needs human sign-off. If None,
-        the run pauses instead (status "awaiting_approval") until resume()."""
+        the run pauses instead (status "awaiting_approval") until resume().
+        `knowledge`: company policies/SOPs retrieved for each task."""
         self.settings = settings or get_settings()
         s = self.settings
         self.llm = llm or build_llm(s)
         self.registry = registry = registry or build_default_registry(s.mock_api_dir)
         self.memory = memory or WorkflowMemory(s.chroma_dir, s.chroma_collection, s.embedding_backend, s.memory_max_distance)
+        self.knowledge = knowledge or KnowledgeBase(
+            s.knowledge_dir, s.chroma_dir, s.knowledge_collection, s.embedding_backend, s.knowledge_max_distance
+        )
         self.history = history or HistoryManager(s.log_dir)
         self.audit = audit or AuditLog(s.audit_log_path)
         self.approver = approver
@@ -203,6 +211,7 @@ class WorkflowOrchestrator:
             pending_approval=v.get("pending_approval") if status == "awaiting_approval" else None,
             error=error,
             final_report=v.get("final_report"),
+            knowledge=v.get("knowledge", []),
             started_at=v["started_at"],
             finished_at=utcnow() if status in TERMINAL else None,
         )
@@ -300,9 +309,28 @@ class WorkflowOrchestrator:
         route = RouteRecord(after="start", options=[nxt], next=nxt, reasoning=decision.reasoning, by_llm=False)
         self.history.record(state["run_id"], "route", route=route)
         update: WorkflowState = {"decision": decision, "routes": [route], "next": "planner" if decision.approved else "finalize"}
-        if not decision.approved:
+        if decision.approved:
+            update["knowledge"] = self._retrieve_knowledge(state, decision.normalized_task)
+        else:
             update["status"] = "rejected"
         return update
+
+    def _retrieve_knowledge(self, state: WorkflowState, task: str) -> list[schemas.KnowledgeSnippet]:
+        """Company policies/SOPs relevant to the task, shown to the planner and the gate."""
+        try:
+            snippets = self.knowledge.search(task, self.settings.knowledge_top_k)
+        except Exception as exc:  # knowledge is an aid; never let it block the run
+            logger.warning("knowledge lookup failed: %s", exc)
+            return []
+        self.history.record(state["run_id"], "knowledge", snippets=snippets)
+        sources = list(dict.fromkeys(f"{s.title} ({s.source})" for s in snippets))
+        self._emit(
+            state, "knowledge",
+            f"Company knowledge: {len(snippets)} passage(s) from {', '.join(sources)}" if snippets
+            else "Company knowledge: no relevant policies or SOPs found",
+            snippets=[s.model_dump(mode="json") for s in snippets],
+        )
+        return snippets
 
     def _planner(self, state: WorkflowState) -> WorkflowState:
         task = state["decision"].normalized_task
@@ -314,7 +342,9 @@ class WorkflowOrchestrator:
             context_parts.append(f"Supervisor guidance: {state['guidance']}")
         requests = state.get("plan_requests", 0) + 1
         try:
-            plan = self.planner.plan(task, self.today, context="\n\n".join(context_parts))
+            plan = self.planner.plan(
+                task, self.today, context="\n\n".join(context_parts), knowledge=state.get("knowledge", [])
+            )
         except LLMError as exc:  # includes PlanningError
             logger.error("planning failed: %s", exc)
             self.history.record(state["run_id"], "planning_failed", error=str(exc))
@@ -337,7 +367,10 @@ class WorkflowOrchestrator:
     def _gate(self, state: WorkflowState) -> WorkflowState:
         """Safety review of the pending plan before it may execute."""
         plan = state["pending_plan"]
-        gate = self.supervisor.review_plan(state["task"], plan, state.get("plans", []), state["decision"].risk_level, self.today)
+        gate = self.supervisor.review_plan(
+            state["task"], plan, state.get("plans", []), state["decision"].risk_level, self.today,
+            knowledge=state.get("knowledge", []),
+        )
         gates = [*state.get("gates", []), gate]
         self.history.record(state["run_id"], "gate", gate=gate)
         self._emit(state, "gate", f"Safety gate: {gate.decision} (risk {gate.risk_level})",
