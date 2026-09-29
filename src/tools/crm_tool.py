@@ -21,11 +21,13 @@ def create_lead(name: str, email: str, company: str, *, data_dir: Path | None = 
     if not mock_store.EMAIL_RE.match(email):
         return ToolResult.fail("create_lead", f"Invalid email address: {email}")
 
-    def append(crm: dict) -> dict | str:
+    def append(crm: dict) -> tuple[dict, bool]:
         leads = crm.setdefault("leads", [])
         existing = next((l for l in leads if l["email"].lower() == email.lower()), None)
         if existing:
-            return f"A lead with email {email} already exists ({existing['id']})"
+            # One lead per email: hand back the existing record instead of failing,
+            # so later steps ("<lead_id from step N>") can still use its ID.
+            return existing, False
         now = utcnow().isoformat()
         lead = {
             "id": f"LEAD-{len(leads) + 1:04d}",
@@ -37,12 +39,18 @@ def create_lead(name: str, email: str, company: str, *, data_dir: Path | None = 
             "updated_at": now,
         }
         leads.append(lead)
-        return lead
+        return lead, True
 
-    out = mock_store.update(_path(data_dir), {"leads": []}, append)
-    if isinstance(out, str):
-        return ToolResult.fail("create_lead", out)
-    return ToolResult.ok("create_lead", lead_id=out["id"], name=name, email=email, company=company, status="new")
+    lead, created = mock_store.update(_path(data_dir), {"leads": []}, append)
+    return ToolResult.ok(
+        "create_lead",
+        lead_id=lead["id"],
+        name=lead["name"],
+        email=lead["email"],
+        company=lead["company"],
+        status=lead["status"],
+        created=created,
+    )
 
 
 def update_status(lead_id: str, status: str, *, data_dir: Path | None = None) -> ToolResult:

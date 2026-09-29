@@ -181,8 +181,9 @@ def build_default_registry(data_dir: Path | None = None) -> ToolRegistry:
     registry.register(
         name="create_lead",
         description=(
-            "Create a new lead in the CRM with status 'new'. Fails if a lead with the same email already exists. "
-            "Returns lead_id (needed by update_status), name, email, company, status."
+            "Create a new lead in the CRM with status 'new'. If a lead with the same email already exists, no "
+            "duplicate is created: the existing lead is returned instead, with created=false and its current status. "
+            "Returns lead_id (needed by update_status), name, email, company, status, created."
         ),
         input_schema={
             "type": "object",

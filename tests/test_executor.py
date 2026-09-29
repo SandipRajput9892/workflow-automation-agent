@@ -90,16 +90,32 @@ def test_marked_failed_when_retry_also_fails(executor, fake_llm):
     assert "adjusted input is invalid" in step.result.error
 
 
-def test_retry_that_fails_at_the_tool(executor, fake_llm, registry):
-    registry.execute("create_lead", LEAD)  # LEAD-0001 already exists
-    plan = make_plan(("create_lead", LEAD))
-    fake_llm.queue(fix({**LEAD, "email": "ROHAN@nimbus.io"}))  # same email, still a duplicate
+def test_retry_that_fails_at_the_tool(executor, fake_llm):
+    plan = make_plan(("update_status", {"lead_id": "LEAD-0999", "status": "won"}))
+    fake_llm.queue(fix({"lead_id": "LEAD-0998", "status": "won"}))  # still no such lead
 
     step = executor.execute_plan(plan).steps[0]
 
     assert step.status == StepStatus.FAILED
     assert [c.result.success for c in step.result.tool_calls] == [False, False]
-    assert "already exists" in step.result.error
+    assert "No lead" in step.result.error
+
+
+def test_existing_lead_is_reused_by_later_steps(executor, fake_llm, registry, data_dir):
+    registry.execute("create_lead", LEAD)  # LEAD-0001 already exists
+    plan = make_plan(
+        ("create_lead", LEAD),
+        ("update_status", {"lead_id": "<lead_id from step 1>", "status": "contacted"}),
+    )
+
+    first, second = executor.execute_plan(plan).steps
+
+    assert first.status == second.status == StepStatus.COMPLETED
+    assert first.result.output()["created"] is False
+    assert second.result.tool_calls[0].tool_input["lead_id"] == "LEAD-0001"
+    assert fake_llm.prompts == []  # no repair needed
+    leads = json.loads((data_dir / "crm.json").read_text())["leads"]
+    assert [(l["id"], l["status"]) for l in leads] == [("LEAD-0001", "contacted")]
 
 
 def test_no_retry_when_claude_says_unfixable(executor, fake_llm, audit):

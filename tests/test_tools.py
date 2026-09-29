@@ -45,13 +45,20 @@ def test_crm_create_and_update(data_dir):
     lead = create_lead("Priya Shah", "priya@acme.com", "Acme", data_dir=data_dir)
     assert lead.success and lead.data == {
         "lead_id": "LEAD-0001", "name": "Priya Shah", "email": "priya@acme.com", "company": "Acme", "status": "new",
+        "created": True,
     }
-    dup = create_lead("Priya S", "PRIYA@acme.com", "Acme", data_dir=data_dir)
-    assert not dup.success and "already exists" in dup.error
 
     upd = update_status("LEAD-0001", "qualified", data_dir=data_dir)
     assert upd.success and upd.data["previous_status"] == "new"
     assert _read(data_dir, "crm.json")["leads"][0]["status"] == "qualified"
+
+    # Same email (any case): the existing lead comes back and no duplicate is written.
+    dup = create_lead("Priya S", "PRIYA@acme.com", "Acme", data_dir=data_dir)
+    assert dup.success and dup.data == {
+        "lead_id": "LEAD-0001", "name": "Priya Shah", "email": "priya@acme.com", "company": "Acme",
+        "status": "qualified", "created": False,
+    }
+    assert len(_read(data_dir, "crm.json")["leads"]) == 1
 
     assert "Invalid status" in update_status("LEAD-0001", "hot", data_dir=data_dir).error
     assert "No lead" in update_status("LEAD-9999", "won", data_dir=data_dir).error
